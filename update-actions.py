@@ -16,21 +16,26 @@ import json
 import re
 import sys
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, NamedTuple
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 
-def fetch_latest_release(owner: str, repo: str) -> Optional[str]:
+class ActionVersion(NamedTuple):
+    """Version info for a GitHub Action."""
+    version: str  # e.g., "7.0.0" (without v)
+    sha: str      # e.g., "11bd71901bbe5b1630ceea73d27597364c9af683"
+
+def fetch_latest_release(owner: str, repo: str) -> Optional[ActionVersion]:
     """
-    Fetch the latest release version from GitHub API.
+    Fetch the latest release version and commit SHA from GitHub API.
 
     Args:
         owner (str): GitHub organization or username.
         repo (str): Repository name.
 
     Returns:
-        str or None: Latest version tag with leading 'v' removed, or None if
-                     the fetch fails or release is not found.
+        ActionVersion or None: Named tuple with version (without v) and full
+                               commit SHA, or None if fetch fails.
     """
     url = f"https://api.github.com/repos/{owner}/{repo}/releases/latest"
     try:
@@ -40,7 +45,19 @@ def fetch_latest_release(owner: str, repo: str) -> Optional[str]:
             data = json.loads(response.read().decode())
             tag = data.get("tag_name", "")
             version = tag.lstrip("v") if tag else None
-            return version
+            if not version:
+                return None
+
+            # Fetch the actual commit SHA for this tag
+            sha_url = f"https://api.github.com/repos/{owner}/{repo}/git/refs/tags/{tag}"
+            sha_req = Request(sha_url)
+            sha_req.add_header("Accept", "application/vnd.github.v3+json")
+            with urlopen(sha_req, timeout=10) as sha_response:
+                sha_data = json.loads(sha_response.read().decode())
+                sha = sha_data.get("object", {}).get("sha", "")
+                if sha:
+                    return ActionVersion(version=version, sha=sha)
+            return None
     except HTTPError as e:
         if e.code == 404:
             print(f"Warning: Release not found for {owner}/{repo}", file=sys.stderr)
@@ -66,26 +83,26 @@ def parse_action(action_ref: str) -> Tuple[str, str, str]:
         return None, None, None
     return match.groups()
 
-def get_latest_versions(workflow_dir: Path) -> Dict[str, str]:
+def get_latest_versions(workflow_dir: Path) -> Dict[str, ActionVersion]:
     """
     Scan workflow files and fetch latest versions for all actions.
 
     Scans all .yml files in the workflow directory, extracts all GitHub action
-    references, and fetches the latest release version for each unique action.
+    references, and fetches the latest release version and SHA for each unique action.
 
     Args:
         workflow_dir (Path): Path to .github/workflows directory.
 
     Returns:
         dict: Mapping of action references (e.g. "actions/checkout@v4") to
-              their latest version numbers (e.g. "7.0.0").
+              ActionVersion tuples with version and commit SHA.
     """
     actions = set()
     for workflow_file in workflow_dir.glob("*.yml"):
         with open(workflow_file, "r") as f:
             content = f.read()
             for match in re.finditer(
-                r"uses:\s+([a-zA-Z0-9\-._]+/[a-zA-Z0-9\-._]+@[a-zA-Z0-9\-._]+)", content
+                r"uses:\s+([a-zA-Z0-9\-._]+/[a-zA-Z0-9\-._]+@[a-zA-Z0-9\-._#]+)", content
             ):
                 actions.add(match.group(1))
     latest_versions = {}
@@ -95,22 +112,22 @@ def get_latest_versions(workflow_dir: Path) -> Dict[str, str]:
             latest = fetch_latest_release(owner, repo)
             if latest:
                 latest_versions[action] = latest
-                print(f"✓ {owner}/{repo}: {current_version} → {latest}")
+                print(f"✓ {owner}/{repo}: {current_version} → {latest.version} ({latest.sha[:7]}...)")
             else:
                 print(f"✗ {owner}/{repo}: could not fetch latest version")
     return latest_versions
 
-def update_workflow_files(workflow_dir: Path, latest_versions: Dict[str, str], dry_run: bool = False) -> int:
+def update_workflow_files(workflow_dir: Path, latest_versions: Dict[str, ActionVersion], dry_run: bool = False) -> int:
     """
-    Update all workflow files with latest action versions.
+    Update all workflow files with latest action SHAs and versions.
 
-    Replaces all action version references in workflow files with their latest
-    versions. If dry_run is True, shows what would be changed without modifying
-    files. Otherwise, writes changes directly to files.
+    Replaces all action version/SHA references in workflow files with their
+    latest commit SHAs (with version comments for readability). If dry_run is
+    True, shows what would be changed without modifying files.
 
     Args:
         workflow_dir (Path): Path to .github/workflows directory.
-        latest_versions (dict): Mapping of action references to latest versions.
+        latest_versions (dict): Mapping of action references to ActionVersion tuples.
         dry_run (bool): If True, print changes without modifying files.
                         Defaults to False.
 
@@ -124,13 +141,14 @@ def update_workflow_files(workflow_dir: Path, latest_versions: Dict[str, str], d
         updated_content = original_content
         made_changes = False
 
-        # Replace the old version with the new one
-        for action_ref, latest_version in latest_versions.items():
+        # Replace the old version with the new SHA-based pin
+        for action_ref, latest_version_info in latest_versions.items():
             owner, repo, current_version = parse_action(action_ref)
-            if current_version == latest_version:
+            # Skip if already at latest version (won't happen with SHAs, but check anyway)
+            if current_version == latest_version_info.version:
                 continue
             old_pattern = f"{owner}/{repo}@{current_version}"
-            new_pattern = f"{owner}/{repo}@{latest_version}"
+            new_pattern = f"{owner}/{repo}@{latest_version_info.sha} # v{latest_version_info.version}"
             if old_pattern in updated_content:
                 updated_content = updated_content.replace(old_pattern, new_pattern)
                 made_changes = True
