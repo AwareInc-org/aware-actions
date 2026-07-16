@@ -1,0 +1,36 @@
+# Release Drafter categorization config: groups PRs into changelog sections
+# by label when drafting a release's notes.
+#
+# Not a workflow — Release Drafter reads this as a static file at
+# .github/release.yml in each consumer repo, so it can't be called via
+# workflow_call. Copy this file's contents to <repo>/.github/release.yml.
+
+changelog:
+  exclude:
+    labels:
+      - ignore-for-release
+    authors:
+      - dependabot[bot]
+  categories:
+    - title: Breaking Changes
+      labels:
+        - breaking
+        - semver:major
+    - title: Features
+      labels:
+        - enhancement
+        - feature
+    - title: Fixes
+      labels:
+        - bug
+        - fix
+    - title: Dependencies
+      labels:
+        - dependencies
+    - title: Documentation
+      labels:
+        - documentation
+        - docs
+    - title: Other Changes
+      labels:
+        - "*"
