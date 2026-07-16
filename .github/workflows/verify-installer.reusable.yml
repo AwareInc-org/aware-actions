@@ -29,12 +29,12 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout calling repo
-        uses: actions/checkout@7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           path: repo
 
       - name: Checkout aware-devkit
-        uses: actions/checkout@7.0.0
+        uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           repository: AwareInc-org/aware-devkit
           ref: ${{ inputs.devkit_ref }}
@@ -42,7 +42,7 @@ jobs:
           token: ${{ secrets.DEVKIT_ACCESS_TOKEN }}
 
       - name: Set up Python
-        uses: actions/setup-python@6.3.0
+        uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1 # v6.3.0
         with:
           python-version: '3.x'
 
