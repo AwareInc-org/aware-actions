@@ -1,0 +1,67 @@
+name: Verify Installer (reusable)
+
+# Regenerates a repo's install-<product>.sh from its installer.config.yaml and
+# fails if the result doesn't match what's checked in. This is what makes a
+# self-contained, curl-pipeable installer script safe to hand-maintain via a
+# config file instead of by hand: the generated script can never silently
+# drift from its config.
+
+on:
+  workflow_call:
+    inputs:
+      config_path:
+        description: 'Path to installer.config.yaml in the calling repo'
+        required: false
+        type: string
+        default: installer.config.yaml
+      devkit_ref:
+        description: 'aware-devkit ref to generate from'
+        required: false
+        type: string
+        default: v1
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout calling repo
+        uses: actions/checkout@7.0.0
+        with:
+          path: repo
+
+      - name: Checkout aware-devkit
+        uses: actions/checkout@7.0.0
+        with:
+          repository: AwareInc-org/aware-devkit
+          ref: ${{ inputs.devkit_ref }}
+          path: devkit
+
+      - name: Set up Python
+        uses: actions/setup-python@6.3.0
+        with:
+          python-version: '3.x'
+
+      - name: Install generator dependencies
+        run: pip install pyyaml
+
+      - name: Determine installer's own filename
+        id: cli
+        run: |
+          name=$(python3 -c "
+          import yaml
+          print(yaml.safe_load(open('repo/${{ inputs.config_path }}'))['product']['cli_name'])
+          ")
+          echo "name=$name" >> "$GITHUB_OUTPUT"
+
+      - name: Regenerate
+        run: |
+          python3 devkit/installer/generate.py \
+            --config "repo/${{ inputs.config_path }}" \
+            --out /tmp/generated.sh
+
+      - name: Diff against checked-in installer
+        run: |
+          if ! diff -u "repo/${{ steps.cli.outputs.name }}.sh" /tmp/generated.sh; then
+            echo "::error::${{ steps.cli.outputs.name }}.sh is out of date with ${{ inputs.config_path }} — regenerate it with aware-devkit/installer/generate.py"
+            exit 1
+          fi

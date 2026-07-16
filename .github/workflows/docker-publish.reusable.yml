@@ -1,0 +1,103 @@
+name: Docker Publish (reusable)
+
+# Shared multi-arch build+push.
+# Callers still own their own `on:` trigger — see docs/design.md.
+
+on:
+  workflow_call:
+    inputs:
+      image:
+        description: 'DockerHub repo to publish to, e.g. examplehub/example-cli'
+        required: true
+        type: string
+      dockerfile:
+        description: 'Path to the Dockerfile, relative to the repo root'
+        required: false
+        type: string
+        default: docker/Dockerfile
+      context:
+        description: 'Docker build context'
+        required: false
+        type: string
+        default: .
+      platforms:
+        description: 'Comma-separated build platforms'
+        required: false
+        type: string
+        default: linux/amd64,linux/arm64
+      tag:
+        description: 'Tag to push on a manual (workflow_dispatch) run; caller passes its own dispatch input through'
+        required: false
+        type: string
+        default: test-build
+      update_latest:
+        description: 'Also tag :latest on a manual (workflow_dispatch) run. Leave off for scratch/test builds; turn on when manually publishing a real release.'
+        required: false
+        type: boolean
+        default: false
+    secrets:
+      DOCKERHUB_USERNAME:
+        required: true
+      DOCKERHUB_TOKEN:
+        required: true
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@7.0.0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@4.2.0
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@4.2.0
+
+      - name: Log in to DockerHub
+        uses: docker/login-action@4.4.0
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Resolve tags
+        id: tags
+        env:
+          IMAGE: ${{ inputs.image }}
+          DISPATCH_TAG: ${{ inputs.tag }}
+          UPDATE_LATEST: ${{ inputs.update_latest }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            if [[ "$UPDATE_LATEST" == "true" ]]; then
+              echo "value=${IMAGE}:${DISPATCH_TAG},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+            else
+              echo "value=${IMAGE}:${DISPATCH_TAG}" >> "$GITHUB_OUTPUT"
+            fi
+            echo "aware_version=${DISPATCH_TAG}" >> "$GITHUB_OUTPUT"
+          elif [[ "${{ github.event_name }}" == "release" ]]; then
+            # github.ref_name is unreliable for release events (can be empty:
+            # https://github.com/actions/runner/issues/2788) — use the event
+            # payload's tag_name instead.
+            echo "value=${IMAGE}:${RELEASE_TAG},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+            echo "aware_version=${RELEASE_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "value=${IMAGE}:${{ github.ref_name }},${IMAGE}:latest" >> "$GITHUB_OUTPUT"
+            echo "aware_version=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@7.3.0
+        with:
+          context: ${{ inputs.context }}
+          file: ${{ inputs.dockerfile }}
+          platforms: ${{ inputs.platforms }}
+          push: true
+          tags: ${{ steps.tags.outputs.value }}
+          build-args: |
+            AWARE_VERSION=${{ steps.tags.outputs.aware_version }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

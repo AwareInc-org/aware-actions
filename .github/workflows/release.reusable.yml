@@ -1,0 +1,177 @@
+name: Release (reusable)
+
+# Two-phase release flow, gated on peer review:
+#
+#   prepare  — runs on workflow_dispatch. Validates a SemVer input, bumps
+#              version.json, opens a release PR against main, and stops.
+#              Nothing is tagged, released, or published at this point.
+#   finalize — runs when a release/vX.Y.Z PR is merged. Extracts the version
+#              from the branch name and creates the tag + GitHub Release
+#              directly on the merge commit. That release publish is what
+#              triggers a caller's docker-publish workflow (via its
+#              `release: types: [published]` trigger), so nothing ships
+#              until the PR is actually reviewed and merged.
+#
+# Set bump_docker_version for repos that also stamp a docker_version field
+# (consumed as a Docker build-arg). Set regenerate_installer for repos with an
+# installer.config.yaml — the freshly-generated install-<product>.sh is
+# included in the same release commit, so the installer is guaranteed correct
+# as of every release even if a config change elsewhere wasn't regenerated at
+# the time. Callers own both the workflow_dispatch and pull_request:closed
+# triggers — see docs/design.md.
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        description: 'Release version, no v prefix (e.g. 1.2.3 or 1.2.3-rc1). Only used by the prepare phase (workflow_dispatch) — finalize derives it from the release branch name.'
+        required: false
+        type: string
+      bump_docker_version:
+        description: 'Also stamp docker_version in version.json (repos that publish a Docker image)'
+        required: false
+        type: boolean
+        default: false
+      regenerate_installer:
+        description: 'Regenerate install-<product>.sh from installer.config.yaml and include it in the release commit'
+        required: false
+        type: boolean
+        default: false
+      installer_config_path:
+        description: 'Path to installer.config.yaml (only used when regenerate_installer is true)'
+        required: false
+        type: string
+        default: installer.config.yaml
+      devkit_ref:
+        description: 'aware-devkit ref to generate from (only used when regenerate_installer is true)'
+        required: false
+        type: string
+        default: v1
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  prepare:
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Validate version input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+            echo "::error::version '$VERSION' must be SemVer (e.g. 1.2.3 or 1.2.3-rc1)"
+            exit 1
+          fi
+
+      - name: Checkout
+        uses: actions/checkout@7.0.0
+        with:
+          fetch-depth: 0
+
+      - name: Check tag does not already exist
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if git rev-parse --verify --quiet "refs/tags/$VERSION" >/dev/null; then
+            echo "::error::tag '$VERSION' already exists"
+            exit 1
+          fi
+
+      - name: Update version.json
+        env:
+          VERSION: ${{ inputs.version }}
+          BUMP_DOCKER_VERSION: ${{ inputs.bump_docker_version }}
+        run: |
+          [ -f version.json ] || echo '{"version": ""}' > version.json
+          tmp=$(mktemp)
+          if [[ "$BUMP_DOCKER_VERSION" == "true" ]]; then
+            jq --arg v "$VERSION" '.version = $v | .docker_version = $v' version.json > "$tmp"
+          else
+            jq --arg v "$VERSION" '.version = $v' version.json > "$tmp"
+          fi
+          mv "$tmp" version.json
+          cat version.json
+
+      - name: Checkout aware-devkit
+        if: inputs.regenerate_installer
+        uses: actions/checkout@7.0.0
+        with:
+          repository: AwareInc-org/aware-devkit
+          ref: ${{ inputs.devkit_ref }}
+          path: .aware-devkit-checkout
+
+      - name: Set up Python
+        if: inputs.regenerate_installer
+        uses: actions/setup-python@6.3.0
+        with:
+          python-version: '3.x'
+
+      - name: Regenerate installer
+        id: installer
+        if: inputs.regenerate_installer
+        run: |
+          pip install --quiet pyyaml
+          cli_name=$(python3 -c "
+          import yaml
+          print(yaml.safe_load(open('${{ inputs.installer_config_path }}'))['product']['cli_name'])
+          ")
+          python3 .aware-devkit-checkout/installer/generate.py \
+            --config "${{ inputs.installer_config_path }}" \
+            --out "${cli_name}.sh"
+          rm -rf .aware-devkit-checkout
+          echo "cli_name=$cli_name" >> "$GITHUB_OUTPUT"
+
+      - name: Commit and push to release branch
+        env:
+          VERSION: ${{ inputs.version }}
+          REGENERATE_INSTALLER: ${{ inputs.regenerate_installer }}
+          CLI_NAME: ${{ steps.installer.outputs.cli_name }}
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add version.json
+          if [[ "$REGENERATE_INSTALLER" == "true" ]]; then
+            git add "${CLI_NAME}.sh"
+          fi
+          git commit -m "release: v$VERSION"
+          git push origin HEAD:refs/heads/release/v$VERSION
+
+      - name: Create release PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ inputs.version }}
+        run: |
+          gh pr create \
+            --base main \
+            --head release/v$VERSION \
+            --title "release: v$VERSION" \
+            --body "Version bump for v$VERSION release. Merge this PR to tag and publish the release."
+
+  finalize:
+    if: >
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.merged == true &&
+      startsWith(github.event.pull_request.head.ref, 'release/v')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Extract version from branch name
+        id: version
+        env:
+          HEAD_REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "value=${HEAD_REF#release/v}" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          VERSION: ${{ steps.version.outputs.value }}
+          MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+        run: |
+          gh release create "$VERSION" \
+            --target "$MERGE_SHA" \
+            --title "v$VERSION" \
+            --generate-notes
