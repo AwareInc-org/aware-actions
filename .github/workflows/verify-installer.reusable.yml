@@ -18,7 +18,11 @@ on:
         description: 'aware-devkit ref to generate from'
         required: false
         type: string
-        default: v1
+        default: main
+    secrets:
+      DEVKIT_ACCESS_TOKEN:
+        description: 'GitHub PAT with repo access to aware-devkit'
+        required: true
 
 jobs:
   verify:
@@ -35,6 +39,7 @@ jobs:
           repository: AwareInc-org/aware-devkit
           ref: ${{ inputs.devkit_ref }}
           path: devkit
+          token: ${{ secrets.DEVKIT_ACCESS_TOKEN }}
 
       - name: Set up Python
         uses: actions/setup-python@6.3.0

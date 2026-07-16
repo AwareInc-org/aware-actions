@@ -43,7 +43,7 @@ Two-phase release: prepare (SemVer validation, version bump, release PR) → fin
 - `bump_docker_version`: Stamp `docker_version` in version.json (default: `false`)
 - `regenerate_installer`: Regenerate installer from config (default: `false`)
 - `installer_config_path`: Path to config (default: `installer.config.yaml`)
-- `devkit_ref`: aware-devkit ref for generation (default: `v1`)
+- `devkit_ref`: aware-devkit ref for generation (default: `main`)
 
 ### Verify Installer
 
@@ -58,7 +58,7 @@ Ensures `install-<product>.sh` matches its `installer.config.yaml`.
 
 **Inputs:**
 - `config_path`: Path to config (default: `installer.config.yaml`)
-- `devkit_ref`: aware-devkit ref (default: `v1`)
+- `devkit_ref`: aware-devkit ref (default: `main`)
 
 ### Shell Lint
 
@@ -73,6 +73,22 @@ Lints shell scripts (shellcheck), PowerShell, bash 3.2 compatibility, and option
 
 **Inputs:**
 - `check_batch_files`: Run batch file check (default: `false`)
+
+## Setup
+
+Release and Verify Installer workflows access `aware-devkit`. Set up authentication:
+
+1. Create a [GitHub Personal Access Token](https://github.com/settings/tokens/new) with `repo` scope
+2. Add it as a secret in your calling repo: `DEVKIT_ACCESS_TOKEN`
+3. Pass it when calling the workflows:
+
+```yaml
+- uses: AwareInc-org/aware-actions/.github/workflows/release.reusable.yml@v1
+  with:
+    regenerate_installer: true
+  secrets:
+    DEVKIT_ACCESS_TOKEN: ${{ secrets.DEVKIT_ACCESS_TOKEN }}
+```
 
 ## Utilities
 
