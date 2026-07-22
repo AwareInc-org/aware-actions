@@ -25,6 +25,8 @@ Multi-architecture Docker image build and push to DockerHub.
 - `platforms`: Comma-separated platforms (default: `linux/amd64,linux/arm64`)
 - `tag`: Tag for manual dispatch (default: `test-build`)
 - `update_latest`: Also tag `:latest` (default: `false`)
+- `version_build_arg`: Name of a build-arg to receive the resolved version/tag, e.g. `VERSION` (default: none)
+- `build_args`: Additional newline-separated `NAME=value` build args for the Dockerfile (default: none)
 
 ### Release
 
