@@ -147,10 +147,12 @@ def update_workflow_files(workflow_dir: Path, latest_versions: Dict[str, ActionV
             # Skip if already at latest version (won't happen with SHAs, but check anyway)
             if current_version == latest_version_info.version:
                 continue
-            old_pattern = f"{owner}/{repo}@{current_version}"
+            old_pattern = re.compile(
+                rf"{re.escape(owner)}/{re.escape(repo)}@{re.escape(current_version)}(?:\s*#[^\n]*)?"
+            )
             new_pattern = f"{owner}/{repo}@{latest_version_info.sha} # v{latest_version_info.version}"
-            if old_pattern in updated_content:
-                updated_content = updated_content.replace(old_pattern, new_pattern)
+            if old_pattern.search(updated_content):
+                updated_content = old_pattern.sub(new_pattern, updated_content)
                 made_changes = True
 
         # Either apply or show the diff
