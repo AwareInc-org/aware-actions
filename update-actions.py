@@ -103,11 +103,11 @@ def get_latest_versions(workflow_dir: Path) -> Dict[str, ActionVersion]:
     """
     actions = set()
     for workflow_file in workflow_dir.glob("*.yml"):
-        if workflow_file.stat().st_size > MAX_WORKFLOW_FILE_SIZE:
-            print(f"Skipping {workflow_file.name}: exceeds {MAX_WORKFLOW_FILE_SIZE} byte limit")
-            continue
         with open(workflow_file, "r") as f:
             content = f.read()
+            if len(content) > MAX_WORKFLOW_FILE_SIZE:
+                print(f"Skipping {workflow_file.name}: exceeds {MAX_WORKFLOW_FILE_SIZE} byte limit")
+                continue
             for match in re.finditer(
                 r"uses:\s+([a-zA-Z0-9\-._]+/[a-zA-Z0-9\-._]+@[a-zA-Z0-9\-._#]+)", content
             ):
@@ -143,11 +143,11 @@ def update_workflow_files(workflow_dir: Path, latest_versions: Dict[str, ActionV
     """
     files_updated = 0
     for workflow_file in workflow_dir.glob("*.yml"):
-        if workflow_file.stat().st_size > MAX_WORKFLOW_FILE_SIZE:
-            print(f"Skipping {workflow_file.name}: exceeds {MAX_WORKFLOW_FILE_SIZE} byte limit")
-            continue
         with open(workflow_file, "r") as f:
             original_content = f.read()
+        if len(original_content) > MAX_WORKFLOW_FILE_SIZE:
+            print(f"Skipping {workflow_file.name}: exceeds {MAX_WORKFLOW_FILE_SIZE} byte limit")
+            continue
         updated_content = original_content
         made_changes = False
 
