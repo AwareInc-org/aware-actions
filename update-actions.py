@@ -20,6 +20,10 @@ from typing import Dict, Optional, Tuple, NamedTuple
 from urllib.request import urlopen, Request
 from urllib.error import HTTPError
 
+# Workflow YAML files are always a few KB; reject anything past this before
+# scanning it for action references, bounding the match loop below.
+MAX_WORKFLOW_FILE_SIZE = 1_048_576  # 1 MiB
+
 class ActionVersion(NamedTuple):
     """Version info for a GitHub Action."""
     version: str  # e.g., "7.0.0" (without v)
@@ -99,6 +103,9 @@ def get_latest_versions(workflow_dir: Path) -> Dict[str, ActionVersion]:
     """
     actions = set()
     for workflow_file in workflow_dir.glob("*.yml"):
+        if workflow_file.stat().st_size > MAX_WORKFLOW_FILE_SIZE:
+            print(f"Skipping {workflow_file.name}: exceeds {MAX_WORKFLOW_FILE_SIZE} byte limit")
+            continue
         with open(workflow_file, "r") as f:
             content = f.read()
             for match in re.finditer(
@@ -136,6 +143,9 @@ def update_workflow_files(workflow_dir: Path, latest_versions: Dict[str, ActionV
     """
     files_updated = 0
     for workflow_file in workflow_dir.glob("*.yml"):
+        if workflow_file.stat().st_size > MAX_WORKFLOW_FILE_SIZE:
+            print(f"Skipping {workflow_file.name}: exceeds {MAX_WORKFLOW_FILE_SIZE} byte limit")
+            continue
         with open(workflow_file, "r") as f:
             original_content = f.read()
         updated_content = original_content
