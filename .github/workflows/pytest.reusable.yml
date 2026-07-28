@@ -1,0 +1,98 @@
+name: Python Test (reusable)
+
+# Runs a repo's pytest suite in a fresh venv via `pip install -e .` + pytest.
+# Optionally checks out and editable-installs a set of sibling repos first,
+# for callers whose code imports another repo's source tree directly rather
+# than a published package. This workflow has no built-in knowledge of any
+# specific repo -- sibling_repos is supplied entirely by the caller.
+# Callers own their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      python_version:
+        description: 'Python version to set up'
+        required: false
+        type: string
+        default: '3.x'
+      extras:
+        description: 'Optional-dependencies extras to install from this repo''s own pyproject.toml, comma-separated (e.g. dev)'
+        required: false
+        type: string
+        default: 'dev'
+      test_path:
+        description: 'Path(s) to pass to pytest'
+        required: false
+        type: string
+        default: 'tests/'
+      pytest_args:
+        description: 'Additional arguments passed through to pytest'
+        required: false
+        type: string
+        default: ''
+      sibling_repos:
+        description: >
+          Newline-separated list of other repos to checkout and `pip install -e`
+          before installing/testing this repo, one per line:
+            owner/repo@ref path [ENV_VAR_NAME]
+          `path` is relative to the job's workspace root, i.e. a sibling of this
+          repo's own checkout (which lives at `repo/`) -- e.g. `aware-common-lib`.
+          The optional 3rd field exports that checkout's absolute path as an env
+          var for the test run, for callers whose tests expect one (e.g.
+          AWARE_COMMON_LIB_DIR).
+        required: false
+        type: string
+        default: ''
+    secrets:
+      SIBLING_REPO_TOKEN:
+        description: 'Token with read access to the repos listed in sibling_repos, if private'
+        required: false
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          path: repo
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install pytest and pytest-cov
+        run: pip install pytest pytest-cov
+
+      - name: Checkout and install sibling repos
+        if: inputs.sibling_repos != ''
+        env:
+          SIBLING_REPOS: ${{ inputs.sibling_repos }}
+          TOKEN: ${{ secrets.SIBLING_REPO_TOKEN }}
+        run: |
+          while IFS= read -r line; do
+            [[ -z "$line" ]] && continue
+            read -r spec path env_var <<< "$line"
+            repo="${spec%@*}"
+            ref="${spec##*@}"
+            echo "Cloning ${repo}@${ref} to ${path}"
+            git clone --branch "$ref" --depth 1 "https://x-access-token:${TOKEN}@github.com/${repo}.git" "$path"
+            pip install -e "$path"
+            if [[ -n "$env_var" ]]; then
+              echo "${env_var}=$(cd "$path" && pwd)" >> "$GITHUB_ENV"
+            fi
+          done <<< "$SIBLING_REPOS"
+
+      - name: Install dependencies
+        working-directory: repo
+        run: |
+          if [[ -n "${{ inputs.extras }}" ]]; then
+            pip install -e ".[${{ inputs.extras }}]"
+          else
+            pip install -e .
+          fi
+
+      - name: Run pytest
+        working-directory: repo
+        run: pytest ${{ inputs.test_path }} --cov --cov-report=term-missing ${{ inputs.pytest_args }}
