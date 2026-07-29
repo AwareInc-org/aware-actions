@@ -32,17 +32,30 @@ on:
         default: ''
       sibling_repos:
         description: >
-          Newline-separated list of other repos to checkout and `pip install -e`
-          before installing/testing this repo, one per line:
-            owner/repo@ref path [ENV_VAR_NAME]
-          `path` is relative to the job's workspace root, i.e. a sibling of this
-          repo's own checkout (which lives at `repo/`) -- e.g. `aware-common-lib`.
-          The optional 3rd field exports that checkout's absolute path as an env
-          var for the test run, for callers whose tests expect one (e.g.
-          AWARE_COMMON_LIB_DIR).
+          YAML list of other repos to checkout and `pip install -e` before
+          installing/testing this repo. Each entry should have:
+            repo: owner/repo@ref (required)
+            path: relative path to checkout (required)
+            env_var: optional env var name to export checkout path
+            extras: optional comma-separated extras to install (e.g. aws,dev)
+          Example:
+            - repo: AwareInc-org/aware-common-lib@main
+              path: aware-common-lib
+              env_var: AWARE_COMMON_LIB_DIR
+              extras: aws
         required: false
         type: string
         default: ''
+      install_self:
+        description: >
+          Whether to `pip install -e` this repo's own checkout before testing.
+          Set to false for callers whose repo root has a non-packaging setup.py
+          (e.g. an operational CLI entrypoint) that breaks setuptools' editable
+          build; such repos should also set `pythonpath` in their own
+          pyproject.toml so their source is importable without an install.
+        required: false
+        type: boolean
+        default: true
     secrets:
       SIBLING_REPO_TOKEN:
         description: 'Token with read access to the repos listed in sibling_repos, if private'
@@ -71,20 +84,30 @@ jobs:
           SIBLING_REPOS: ${{ inputs.sibling_repos }}
           TOKEN: ${{ secrets.SIBLING_REPO_TOKEN }}
         run: |
-          while IFS= read -r line; do
-            [[ -z "$line" ]] && continue
-            read -r spec path env_var <<< "$line"
-            repo="${spec%@*}"
-            ref="${spec##*@}"
-            echo "Cloning ${repo}@${ref} to ${path}"
-            git clone --branch "$ref" --depth 1 "https://x-access-token:${TOKEN}@github.com/${repo}.git" "$path"
-            pip install -e "$path"
+          echo "$SIBLING_REPOS" | yq -r '.[] | @json' | while read -r entry; do
+            repo=$(echo "$entry" | jq -r '.repo')
+            path=$(echo "$entry" | jq -r '.path')
+            env_var=$(echo "$entry" | jq -r '.env_var // empty')
+            extras=$(echo "$entry" | jq -r '.extras // empty')
+
+            ref="${repo##*@}"
+            repo_name="${repo%@*}"
+            echo "Cloning ${repo_name}@${ref} to ${path}"
+            git clone --branch "$ref" --depth 1 "https://x-access-token:${TOKEN}@github.com/${repo_name}.git" "$path"
+
+            if [[ -n "$extras" ]]; then
+              pip install -e "${path}[${extras}]"
+            else
+              pip install -e "$path"
+            fi
+
             if [[ -n "$env_var" ]]; then
               echo "${env_var}=$(cd "$path" && pwd)" >> "$GITHUB_ENV"
             fi
-          done <<< "$SIBLING_REPOS"
+          done
 
       - name: Install dependencies
+        if: inputs.install_self
         working-directory: repo
         run: |
           if [[ -n "${{ inputs.extras }}" ]]; then
