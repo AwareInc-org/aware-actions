@@ -171,7 +171,13 @@ jobs:
 
       - name: Create GitHub Release
         env:
-          GH_TOKEN: ${{ github.token }}
+          # A release created with the default GITHUB_TOKEN does not trigger
+          # downstream workflows (GitHub suppresses event-triggering for the
+          # default token to prevent infinite workflow loops) -- callers'
+          # docker-publish `release: types: [published]` trigger would
+          # silently never fire. A PAT is attributed to a real account, so it
+          # triggers normally.
+          GH_TOKEN: ${{ secrets.DEVKIT_ACCESS_TOKEN }}
           GH_REPO: ${{ github.repository }}
           VERSION: ${{ steps.version.outputs.value }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
