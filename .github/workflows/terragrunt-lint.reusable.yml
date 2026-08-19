@@ -5,10 +5,6 @@ name: Terragrunt Lint (reusable)
 # was found to hang indefinitely against real live/ configs,
 # apparently while resolving backend/provider state. Add validation only with
 # a hard timeout and real cloud credentials wired in, if ever.
-#
-# No official setup-terragrunt action exists, so the binary is downloaded
-# directly from GitHub Releases, mirroring aware-common-lib's Dockerfile.
-# Callers own their own `on: push/pull_request` trigger.
 
 on:
   workflow_call:
