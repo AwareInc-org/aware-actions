@@ -1,0 +1,67 @@
+name: Check Requirements (reusable)
+
+# Regenerates requirements files from pyproject.toml and fails if they're out of date
+# with what's checked in. This prevents PRs from merging with stale requirements files.
+
+on:
+  workflow_call:
+    inputs:
+      gen_script_path:
+        description: 'Path to the requirements generation script'
+        required: false
+        type: string
+        default: 'scripts/gen-requirements.py'
+      pyproject_path:
+        description: 'Path to pyproject.toml'
+        required: false
+        type: string
+        default: 'pyproject.toml'
+      requirements_files:
+        description: >
+          Newline-separated list of requirements files to check.
+          Example: "requirements.txt\nrequirements-dev.txt\nrequirements-docker.txt"
+        required: false
+        type: string
+        default: 'requirements.txt'
+      python_version:
+        description: 'Python version to use for generation'
+        required: false
+        type: string
+        default: '3.x'
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ inputs.python_version }}
+
+      - name: Install generation dependencies
+        run: pip install tomli
+
+      - name: Regenerate requirements files
+        run: python3 ${{ inputs.gen_script_path }}
+
+      - name: Check for changes
+        run: |
+          # Convert multiline input to space-separated list
+          files=$(echo "${{ inputs.requirements_files }}" | tr '\n' ' ')
+
+          if ! git diff --exit-code $files; then
+            echo "::error::Requirements files are out of date with ${{ inputs.pyproject_path }}"
+            echo ""
+            echo "The following files need to be regenerated:"
+            git diff --name-only $files
+            echo ""
+            echo "Run this command locally to fix it:"
+            echo "  python3 ${{ inputs.gen_script_path }}"
+            echo ""
+            exit 1
+          fi
+
+          echo "✓ All requirements files are up to date"

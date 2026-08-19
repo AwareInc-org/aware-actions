@@ -76,6 +76,27 @@ Lints shell scripts (shellcheck), PowerShell, bash 3.2 compatibility, and option
 **Inputs:**
 - `check_batch_files`: Run batch file check (default: `false`)
 
+### Check Requirements
+
+Ensures `requirements*.txt` files are up to date with `pyproject.toml`.
+
+**Usage:**
+```yaml
+- uses: AwareInc-org/aware-actions/.github/workflows/check-requirements.reusable.yml@v1
+  with:
+    gen_script_path: scripts/gen-requirements.py
+    requirements_files: |
+      requirements.txt
+      requirements-dev.txt
+      requirements-docker.txt
+```
+
+**Inputs:**
+- `gen_script_path`: Path to the requirements generation script (default: `scripts/gen-requirements.py`)
+- `pyproject_path`: Path to `pyproject.toml` (default: `pyproject.toml`)
+- `requirements_files`: Newline-separated list of requirements files to check (default: `requirements.txt`)
+- `python_version`: Python version to use for generation (default: `3.x`)
+
 ### Python Test
 
 Installs a Python repo (editable) and runs its pytest suite. Has no built-in knowledge of any
@@ -106,6 +127,72 @@ published package) supply that via `sibling_repos`.
 - `test_path`: Path(s) to pass to pytest (default: `tests/`)
 - `pytest_args`: Additional arguments passed through to pytest (default: none)
 - `sibling_repos`: Newline-separated `owner/repo@ref path [ENV_VAR_NAME]` entries to checkout and `pip install -e` before this repo's own install/tests (default: none)
+
+### Go Test
+
+Runs `go test` (with race detector and coverage summary by default). Supports resolving
+private AwareInc-org Go modules imported directly from source.
+
+**Usage:**
+```yaml
+- uses: AwareInc-org/aware-actions/.github/workflows/go-test.reusable.yml@v1
+  with:
+    working_directory: .
+```
+
+**Usage (with a private module dependency):**
+```yaml
+- uses: AwareInc-org/aware-actions/.github/workflows/go-test.reusable.yml@v1
+  with:
+    private_modules: github.com/AwareInc-org/*
+  secrets:
+    PRIVATE_MODULES_TOKEN: ${{ secrets.DEVKIT_ACCESS_TOKEN }}
+```
+
+**Inputs:**
+- `go_version`: Go version to set up, e.g. `1.22` or `stable` (default: `stable`)
+- `working_directory`: Directory containing `go.mod` (default: `.`)
+- `test_path`: Package path(s) to pass to `go test` (default: `./...`)
+- `race`: Run tests with the race detector (default: `true`)
+- `coverage`: Collect and print a coverage summary (default: `true`)
+- `test_args`: Additional arguments passed through to `go test` (default: none)
+- `private_modules`: Comma-separated `GOPRIVATE` patterns, e.g. `github.com/AwareInc-org/*` (default: none). Requires `PRIVATE_MODULES_TOKEN`.
+
+### Terraform Lint
+
+Checks Terraform/OpenTofu formatting (`fmt -check`) and static analysis (`tflint`). Runs no
+init/plan/apply, so it needs no cloud credentials.
+
+**Usage:**
+```yaml
+- uses: AwareInc-org/aware-actions/.github/workflows/terraform-lint.reusable.yml@v1
+  with:
+    working_directory: modules
+```
+
+**Inputs:**
+- `working_directory`: Directory to lint, checked recursively (default: `.`)
+- `tf_binary`: Binary to use for the fmt check, `tofu` or `terraform` (default: `tofu`)
+- `tf_version`: Version of `tf_binary` to install (default: `latest`)
+- `tflint_version`: Version of tflint to install (default: `latest`)
+- `minimum_failure_severity`: Minimum tflint issue severity that fails the job — `error`, `warning`, or `notice` (default: `warning`)
+
+### Terragrunt Lint
+
+Checks Terragrunt HCL formatting (`terragrunt hcl format --check`). Deliberately does not run
+`terragrunt hcl validate` -- it was found to hang indefinitely against real live/ configs,
+apparently while resolving backend/provider state.
+
+**Usage:**
+```yaml
+- uses: AwareInc-org/aware-actions/.github/workflows/terragrunt-lint.reusable.yml@v1
+  with:
+    working_directory: live
+```
+
+**Inputs:**
+- `working_directory`: Directory to check, checked recursively (default: `.`)
+- `terragrunt_version`: Terragrunt version to install, e.g. `v1.1.3`, or `latest` (default: `latest`)
 
 ## Setup
 
