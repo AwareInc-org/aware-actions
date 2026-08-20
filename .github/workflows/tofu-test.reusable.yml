@@ -1,0 +1,66 @@
+name: OpenTofu Test (reusable)
+
+# Runs OpenTofu unit tests (tofu test) on modules using mocked providers. Tests are
+# self-contained with no cloud credentials or real resources needed.
+#
+# `tofu test` has no -recursive flag: it only discovers *.tftest.hcl files in the
+# current directory and its testing directory (default "tests"). Since each module is
+# its own root module with its own tests/ folder, this workflow finds every directory
+# containing a testing directory and runs `tofu init && tofu test` in each one.
+# Callers own their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      tofu_version:
+        description: 'Version of OpenTofu to install'
+        required: false
+        type: string
+        default: 'latest'
+      working_directory:
+        description: 'Directory to search for modules with tests (searched recursively)'
+        required: false
+        type: string
+        default: '.'
+      test_directory:
+        description: 'Name of the per-module testing directory to look for'
+        required: false
+        type: string
+        default: 'tests'
+      test_filter:
+        description: 'Filter tests by name (passed to tofu test -filter)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up OpenTofu
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ inputs.tofu_version }}
+
+      - name: Run tofu test on each module
+        working-directory: ${{ inputs.working_directory }}
+        run: |
+          filter_args=()
+          if [[ -n "${{ inputs.test_filter }}" ]]; then
+            filter_args+=(-filter="${{ inputs.test_filter }}")
+          fi
+
+          status=0
+          while IFS= read -r -d '' test_dir; do
+            module_dir=$(dirname "$test_dir")
+            echo "::group::${module_dir}"
+            if ! (cd "$module_dir" && tofu init -input=false && tofu test -test-directory="${{ inputs.test_directory }}" "${filter_args[@]}"); then
+              status=1
+            fi
+            echo "::endgroup::"
+          done < <(find . -type d -name "${{ inputs.test_directory }}" -not -path '*/.terragrunt-cache/*' -not -path '*/.terraform/*' -print0)
+
+          exit "$status"
