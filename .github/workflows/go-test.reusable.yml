@@ -1,0 +1,95 @@
+name: Go Test (reusable)
+
+# Runs a Go repo's unit tests (go test) with an optional race detector and
+# coverage summary. Supports resolving private AwareInc-org Go modules via
+# GOPRIVATE + a token, for repos that import another private module directly
+# rather than vendoring it. Callers own their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      go_version:
+        description: 'Go version to set up (e.g. 1.22, or "stable")'
+        required: false
+        type: string
+        default: 'stable'
+      working_directory:
+        description: 'Directory containing go.mod'
+        required: false
+        type: string
+        default: '.'
+      test_path:
+        description: 'Package path(s) to pass to go test'
+        required: false
+        type: string
+        default: './...'
+      race:
+        description: 'Run tests with the race detector (-race)'
+        required: false
+        type: boolean
+        default: true
+      coverage:
+        description: 'Collect and print a coverage summary'
+        required: false
+        type: boolean
+        default: true
+      test_args:
+        description: 'Additional arguments passed through to go test'
+        required: false
+        type: string
+        default: ''
+      private_modules:
+        description: >
+          Comma-separated GOPRIVATE module path patterns to authenticate for,
+          e.g. "github.com/AwareInc-org/*". Leave empty if this repo has no
+          private module dependencies. Requires PRIVATE_MODULES_TOKEN.
+        required: false
+        type: string
+        default: ''
+    secrets:
+      PRIVATE_MODULES_TOKEN:
+        description: 'GitHub PAT with repo access to the modules listed in private_modules'
+        required: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Go
+        uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
+        with:
+          go-version: ${{ inputs.go_version }}
+          cache-dependency-path: ${{ inputs.working_directory }}/go.sum
+
+      - name: Configure access to private modules
+        if: inputs.private_modules != ''
+        run: |
+          go env -w GOPRIVATE="${{ inputs.private_modules }}"
+          git config --global url."https://x-access-token:${{ secrets.PRIVATE_MODULES_TOKEN }}@github.com/".insteadOf "https://github.com/"
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go vet
+        run: go vet ${{ inputs.test_path }}
+
+      - name: Run go test
+        run: |
+          args=(-v)
+          if [[ "${{ inputs.race }}" == "true" ]]; then
+            args+=(-race)
+          fi
+          if [[ "${{ inputs.coverage }}" == "true" ]]; then
+            args+=(-coverprofile=coverage.out)
+          fi
+          go test "${args[@]}" ${{ inputs.test_args }} ${{ inputs.test_path }}
+
+      - name: Print coverage summary
+        if: inputs.coverage
+        run: go tool cover -func=coverage.out

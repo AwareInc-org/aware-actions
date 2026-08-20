@@ -1,0 +1,72 @@
+name: Terraform Lint (reusable)
+
+# Checks Terraform/OpenTofu formatting (fmt) and static analysis (tflint).
+# Runs no init/plan/apply against a backend or provider, so it needs no cloud
+# credentials. Callers own their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory to lint (checked recursively)'
+        required: false
+        type: string
+        default: '.'
+      tf_binary:
+        description: 'Binary to use for the fmt check: "tofu" or "terraform"'
+        required: false
+        type: string
+        default: 'tofu'
+      tf_version:
+        description: 'Version of tf_binary to install'
+        required: false
+        type: string
+        default: 'latest'
+      tflint_version:
+        description: 'Version of tflint to install'
+        required: false
+        type: string
+        default: 'latest'
+      minimum_failure_severity:
+        description: 'Minimum tflint issue severity that fails the job: error, warning, or notice'
+        required: false
+        type: string
+        default: 'warning'
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up OpenTofu
+        if: inputs.tf_binary == 'tofu'
+        uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
+        with:
+          tofu_version: ${{ inputs.tf_version }}
+
+      - name: Set up Terraform
+        if: inputs.tf_binary == 'terraform'
+        uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ inputs.tf_version }}
+          terraform_wrapper: false
+
+      - name: Check formatting
+        run: ${{ inputs.tf_binary }} fmt -check -recursive ${{ inputs.working_directory }}
+
+      - name: Set up tflint
+        uses: terraform-linters/setup-tflint@6e1e0642c0289bd619021bf6b34e3c08ed1e005a # v6.3.0
+        with:
+          tflint_version: ${{ inputs.tflint_version }}
+
+      - name: Init tflint plugins
+        working-directory: ${{ inputs.working_directory }}
+        run: tflint --init
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+
+      - name: Run tflint
+        working-directory: ${{ inputs.working_directory }}
+        run: tflint --recursive --minimum-failure-severity=${{ inputs.minimum_failure_severity }} -f compact
