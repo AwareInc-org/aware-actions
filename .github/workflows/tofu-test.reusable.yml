@@ -40,6 +40,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
+      - name: Free disk space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          df -h /
+
       - name: Set up OpenTofu
         uses: opentofu/setup-opentofu@a1320f892987e89d278cc92dc5adc984fb93aca4 # v2.0.2
         with:
@@ -47,7 +52,11 @@ jobs:
 
       - name: Run tofu test on each module
         working-directory: ${{ inputs.working_directory }}
+        env:
+          TF_PLUGIN_CACHE_DIR: ${{ runner.temp }}/terraform-plugins
         run: |
+          mkdir -p "$TF_PLUGIN_CACHE_DIR"
+
           filter_args=()
           if [[ -n "${{ inputs.test_filter }}" ]]; then
             filter_args+=(-filter="${{ inputs.test_filter }}")
