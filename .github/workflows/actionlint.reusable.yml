@@ -1,0 +1,57 @@
+name: Actionlint (reusable)
+
+# Lints GitHub Actions workflow YAML (.github/workflows/*.yml) with actionlint:
+# syntax errors, expression errors, unreachable/unused values, and (via its
+# bundled shellcheck integration) shell issues inside `run:` steps. Useful both
+# for this repo's own reusable workflows and for other repos' custom actions,
+# which typically still have workflows exercising/releasing them. Callers own
+# their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory to lint (actionlint discovers .github/workflows from here)'
+        required: false
+        type: string
+        default: '.'
+      actionlint_version:
+        description: 'Version of actionlint to install, e.g. "1.7.12", or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      ignore_patterns:
+        description: >
+          Newline-separated regex patterns for error messages to ignore, passed
+          as repeated -ignore flags. Example: "SC2086\nlabel .* is unknown"
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ${{ inputs.working_directory }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install shellcheck
+        run: sudo apt-get install -y shellcheck
+
+      - name: Install actionlint
+        id: install_actionlint
+        # actionlint_version selects the binary version actually downloaded,
+        # independent of the pinned script commit below.
+        run: |
+          bash <(curl -sSf https://raw.githubusercontent.com/rhysd/actionlint/914e7df21a07ef503a81201c76d2b11c789d3fca/scripts/download-actionlint.bash) "${{ inputs.actionlint_version }}" # v1.7.12
+
+      - name: Run actionlint
+        run: |
+          args=(-color)
+          while IFS= read -r pattern; do
+            [[ -n "$pattern" ]] && args+=(-ignore "$pattern")
+          done <<< "${{ inputs.ignore_patterns }}"
+          "${{ steps.install_actionlint.outputs.executable }}" "${args[@]}"
