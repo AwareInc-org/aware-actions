@@ -15,6 +15,7 @@ Reusable GitHub Actions for CI/CD workflows.
 - [OpenTofu Test](docs/workflows/tofu-test.md) — Runs OpenTofu unit tests against mocked providers
 - [Terraform Lint](docs/workflows/terraform-lint.md) — Checks Terraform/OpenTofu formatting and static analysis
 - [Terragrunt Lint](docs/workflows/terragrunt-lint.md) — Checks Terragrunt HCL formatting
+- [Helm Lint](docs/workflows/helm-lint.md) — Lints Helm charts and confirms they render with their own defaults, optionally validating output against the Kubernetes API schema
 
 ## Setup
 
