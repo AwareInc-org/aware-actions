@@ -49,14 +49,14 @@ jobs:
 
       - name: Check for changes
         run: |
-          # Convert multiline input to space-separated list
-          files=$(echo "${{ inputs.requirements_files }}" | tr '\n' ' ')
+          # Convert multiline input into an array, dropping blank lines
+          mapfile -t files < <(printf '%s\n' "${{ inputs.requirements_files }}" | grep -v '^[[:space:]]*$')
 
-          if ! git diff --exit-code $files; then
+          if ! git diff --exit-code "${files[@]}"; then
             echo "::error::Requirements files are out of date with ${{ inputs.pyproject_path }}"
             echo ""
             echo "The following files need to be regenerated:"
-            git diff --name-only $files
+            git diff --name-only "${files[@]}"
             echo ""
             echo "Run this command locally to fix it:"
             echo "  python3 ${{ inputs.gen_script_path }}"

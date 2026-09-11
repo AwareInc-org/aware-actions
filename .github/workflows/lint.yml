@@ -1,0 +1,22 @@
+name: Lint
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  actionlint:
+    uses: ./.github/workflows/actionlint.reusable.yml
+
+  yaml-lint:
+    uses: ./.github/workflows/yaml-lint.reusable.yml
+
+  markdown-lint:
+    uses: ./.github/workflows/markdown-lint.reusable.yml
+
+  gitleaks:
+    uses: ./.github/workflows/gitleaks.reusable.yml

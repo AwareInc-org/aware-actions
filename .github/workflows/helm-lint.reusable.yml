@@ -1,0 +1,158 @@
+name: Helm Lint (reusable)
+
+# Lints Helm charts (`helm lint`) and confirms they render (`helm template`)
+# using their own default values.yaml plus any additional values files
+# supplied. Rendering with no overrides at all is the point: a chart that
+# only works once you pass `--set` or a values file doesn't ship usable
+# defaults, which is one of the most common mistakes in charts. Optionally
+# validates the rendered manifests against the Kubernetes API schema with
+# kubeconform, catching malformed resources that both helm lint and a
+# successful render can miss. Runs no install/upgrade against a real
+# cluster. Callers own their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      chart_path:
+        description: 'Directory to search recursively for Helm charts (every directory containing a Chart.yaml is linted/rendered)'
+        required: false
+        type: string
+        default: '.'
+      values_files:
+        description: >
+          Newline-separated additional values file(s) to render each chart
+          against, relative to the chart's own directory (e.g.
+          "values-prod.yaml"). Every chart is always rendered once first
+          with no overrides, using only its own default values.yaml.
+        required: false
+        type: string
+        default: ''
+      helm_version:
+        description: 'Version of Helm to install'
+        required: false
+        type: string
+        default: 'latest'
+      strict:
+        description: 'Run helm lint with --strict (fail on lint warnings, not just errors)'
+        required: false
+        type: boolean
+        default: true
+      kubeconform:
+        description: 'Also validate rendered manifests against the Kubernetes API schema with kubeconform'
+        required: false
+        type: boolean
+        default: true
+      kubeconform_version:
+        description: 'Version of kubeconform to install, e.g. "0.8.0", or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      kubernetes_version:
+        description: 'Kubernetes version schema for kubeconform to validate against, e.g. "1.30.0". Leave empty for kubeconform''s default (master schema)'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  discover:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      charts: ${{ steps.discover.outputs.charts }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Discover charts
+        id: discover
+        run: |
+          mapfile -t charts < <(find "${{ inputs.chart_path }}" -not -path '*/.git/*' -name Chart.yaml -exec dirname {} \; | sort -u)
+          if [[ ${#charts[@]} -eq 0 ]]; then
+            echo "::error::No Helm charts found under ${{ inputs.chart_path }} (no Chart.yaml)"
+            exit 1
+          fi
+          printf 'Found %d chart(s):\n' "${#charts[@]}"
+          printf '  %s\n' "${charts[@]}"
+          json=$(printf '%s\n' "${charts[@]}" | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "charts=$json" >> "$GITHUB_OUTPUT"
+
+  lint:
+    needs: discover
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        chart: ${{ fromJSON(needs.discover.outputs.charts) }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Helm
+        uses: azure/setup-helm@9bc31f4ebc9c6b171d7bfbaa5d006ae7abdb4310 # v5.0.1
+        with:
+          version: ${{ inputs.helm_version }}
+
+      - name: Install kubeconform
+        if: inputs.kubeconform
+        run: |
+          if [[ "${{ inputs.kubeconform_version }}" == "latest" ]]; then
+            url="https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz"
+          else
+            url="https://github.com/yannh/kubeconform/releases/download/v${{ inputs.kubeconform_version }}/kubeconform-linux-amd64.tar.gz"
+          fi
+          curl -sSfL "$url" | tar xz kubeconform
+          sudo mv kubeconform /usr/local/bin/kubeconform
+
+      - name: helm lint
+        run: |
+          strict_flag=()
+          if [[ "${{ inputs.strict }}" == "true" ]]; then
+            strict_flag=(--strict)
+          fi
+          helm lint "${strict_flag[@]}" "${{ matrix.chart }}"
+
+      - name: Render with default values
+        run: helm template ci "${{ matrix.chart }}" > /tmp/rendered-default.yaml
+
+      - name: Validate default-values render (kubeconform)
+        if: inputs.kubeconform
+        run: |
+          k8s_flag=()
+          if [[ -n "${{ inputs.kubernetes_version }}" ]]; then
+            k8s_flag=(-kubernetes-version "${{ inputs.kubernetes_version }}")
+          fi
+          kubeconform -strict -ignore-missing-schemas -summary "${k8s_flag[@]}" /tmp/rendered-default.yaml
+
+      - name: Render and validate with additional values files
+        if: inputs.values_files != ''
+        run: |
+          mapfile -t values_files < <(printf '%s\n' "${{ inputs.values_files }}" | grep -v '^[[:space:]]*$')
+
+          status=0
+          for vf in "${values_files[@]}"; do
+            path="${{ matrix.chart }}/$vf"
+            if [[ ! -f "$path" ]]; then
+              echo "::warning::$path not found, skipping"
+              continue
+            fi
+
+            echo "::group::render with $vf"
+            if ! helm template ci "${{ matrix.chart }}" -f "$path" > /tmp/rendered-extra.yaml; then
+              status=1
+              echo "::endgroup::"
+              continue
+            fi
+
+            if [[ "${{ inputs.kubeconform }}" == "true" ]]; then
+              k8s_flag=()
+              if [[ -n "${{ inputs.kubernetes_version }}" ]]; then
+                k8s_flag=(-kubernetes-version "${{ inputs.kubernetes_version }}")
+              fi
+              kubeconform -strict -ignore-missing-schemas -summary "${k8s_flag[@]}" /tmp/rendered-extra.yaml || status=1
+            fi
+            echo "::endgroup::"
+          done
+          exit $status

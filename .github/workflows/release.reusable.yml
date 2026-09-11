@@ -18,7 +18,7 @@ name: Release (reusable)
 # included in the same release commit, so the installer is guaranteed correct
 # as of every release even if a config change elsewhere wasn't regenerated at
 # the time. Callers own both the workflow_dispatch and pull_request:closed
-# triggers — see docs/design.md.
+# triggers.
 
 on:
   workflow_call:
@@ -142,7 +142,7 @@ jobs:
             git add "${CLI_NAME}.sh"
           fi
           git commit -m "release: v$VERSION"
-          git push origin HEAD:refs/heads/release/v$VERSION
+          git push origin "HEAD:refs/heads/release/v$VERSION"
 
       - name: Create release PR
         env:
@@ -151,7 +151,7 @@ jobs:
         run: |
           gh pr create \
             --base main \
-            --head release/v$VERSION \
+            --head "release/v$VERSION" \
             --title "release: v$VERSION" \
             --body "Version bump for v$VERSION release. Merge this PR to tag and publish the release."
 

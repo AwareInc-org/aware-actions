@@ -1,0 +1,75 @@
+name: Trivy Config (reusable)
+
+# Scans Terraform/OpenTofu configuration for security misconfigurations with
+# `trivy config`: public storage buckets, open security groups, missing
+# encryption, and similar. Complements terraform-lint.reusable.yml, which
+# only checks formatting and style (tflint) -- not security posture. Static
+# HCL analysis only, so it needs no cloud credentials, backend init, or real
+# plan/apply. tfsec (aquasecurity/tfsec) covered this same ground but is
+# deprecated in favor of Trivy. Callers own their own
+# `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory to scan (checked recursively)'
+        required: false
+        type: string
+        default: '.'
+      trivy_version:
+        description: 'Version of Trivy to install, e.g. v0.74.0, or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      severity:
+        description: 'Comma-separated severities that fail the job: UNKNOWN, LOW, MEDIUM, HIGH, CRITICAL'
+        required: false
+        type: string
+        default: 'HIGH,CRITICAL'
+      skip_checks:
+        description: 'Newline-separated check IDs to ignore, e.g. "AWS-0132"'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve trivy version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ inputs.trivy_version }}" == "latest" ]]; then
+            tag=$(gh api repos/aquasecurity/trivy/releases/latest --jq '.tag_name')
+          else
+            tag="${{ inputs.trivy_version }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install trivy
+        run: |
+          version="${{ steps.version.outputs.tag }}"
+          version="${version#v}"
+          curl -fsSL -o /tmp/trivy.tar.gz \
+            "https://github.com/aquasecurity/trivy/releases/download/${{ steps.version.outputs.tag }}/trivy_${version}_Linux-64bit.tar.gz"
+          tar -xzf /tmp/trivy.tar.gz -C /usr/local/bin trivy
+          chmod +x /usr/local/bin/trivy
+          trivy --version
+
+      - name: Scan for misconfigurations
+        run: |
+          args=(config --exit-code 1 --severity "${{ inputs.severity }}")
+
+          mapfile -t skip_checks < <(printf '%s\n' "${{ inputs.skip_checks }}" | grep -v '^[[:space:]]*$')
+          if [[ ${#skip_checks[@]} -gt 0 ]]; then
+            printf '%s\n' "${skip_checks[@]}" > /tmp/.trivyignore
+            args+=(--ignorefile /tmp/.trivyignore)
+          fi
+
+          trivy "${args[@]}" "${{ inputs.working_directory }}"

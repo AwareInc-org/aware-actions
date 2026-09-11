@@ -1,0 +1,90 @@
+name: Docker Lint (reusable)
+
+# Lints every Dockerfile under working_directory with hadolint: unpinned base
+# images, unpinned/uncleaned apt packages, ADD vs COPY, shell-form
+# CMD/ENTRYPOINT, missing USER, and similar. Runs no build, so it needs no
+# Docker daemon or registry access. Callers own their own
+# `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory to search recursively for Dockerfiles (Dockerfile, Dockerfile.*, *.Dockerfile)'
+        required: false
+        type: string
+        default: '.'
+      hadolint_version:
+        description: 'Version of hadolint to install, e.g. v2.15.1, or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      failure_threshold:
+        description: 'Minimum rule severity that fails the job: error, warning, info, style, ignore, or none'
+        required: false
+        type: string
+        default: 'warning'
+      ignore_rules:
+        description: >
+          Newline-separated hadolint rule codes to ignore, e.g. "DL3008".
+          Passed as repeated --ignore flags.
+        required: false
+        type: string
+        default: ''
+      config_path:
+        description: 'Path to a hadolint config file. Leave empty to rely on hadolint''s own .hadolint.yaml discovery'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve hadolint version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ inputs.hadolint_version }}" == "latest" ]]; then
+            tag=$(gh api repos/hadolint/hadolint/releases/latest --jq '.tag_name')
+          else
+            tag="${{ inputs.hadolint_version }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install hadolint
+        run: |
+          curl -fsSL -o /usr/local/bin/hadolint \
+            "https://github.com/hadolint/hadolint/releases/download/${{ steps.version.outputs.tag }}/hadolint-linux-x86_64"
+          chmod +x /usr/local/bin/hadolint
+          hadolint --version
+
+      - name: Lint Dockerfiles
+        run: |
+          mapfile -d '' -t files < <(
+            find "${{ inputs.working_directory }}" -not -path '*/.git/*' -type f \
+              \( -name 'Dockerfile' -o -name 'Dockerfile.*' -o -name '*.Dockerfile' \) -print0 | sort -z
+          )
+          if [[ ${#files[@]} -eq 0 ]]; then
+            echo "::error::No Dockerfiles found under ${{ inputs.working_directory }}"
+            exit 1
+          fi
+          printf 'Found %d Dockerfile(s):\n' "${#files[@]}"
+          printf '  %s\n' "${files[@]}"
+
+          args=(--failure-threshold "${{ inputs.failure_threshold }}")
+
+          if [[ -n "${{ inputs.config_path }}" ]]; then
+            args+=(--config "${{ inputs.config_path }}")
+          fi
+
+          mapfile -t ignore_rules < <(printf '%s\n' "${{ inputs.ignore_rules }}" | grep -v '^[[:space:]]*$')
+          for rule in "${ignore_rules[@]}"; do
+            args+=(--ignore "$rule")
+          done
+
+          hadolint "${args[@]}" "${files[@]}"

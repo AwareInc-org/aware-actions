@@ -1,7 +1,6 @@
 name: Docker Publish (reusable)
 
-# Shared multi-arch build+push.
-# Callers still own their own `on:` trigger — see docs/design.md.
+# Shared multi-arch build+push. Callers own their own `on:` trigger.
 
 on:
   workflow_call:
@@ -68,7 +67,7 @@ jobs:
           df -h /
 
       - name: Set up QEMU
-        uses: docker/setup-qemu-action@96fe6ef7f33517b61c61be40b68a1882f3264fb8 # v4.2.0
+        uses: docker/setup-qemu-action@1f40c72289eff860ee54a304f1438e3cff362e0a # v4.3.0
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@37fe631027851001ddb9b187196cc803df7f5f0e # v4.3.0
@@ -114,10 +113,12 @@ jobs:
         run: |
           {
             echo "value<<BUILD_ARGS_EOF"
-            # bash -e is on by default for run: steps — a bare `[[ ]] && echo` whose
-            # condition is false exits nonzero and would abort the step, so `|| true`.
-            [[ -n "$VERSION_ARG_NAME" ]] && echo "${VERSION_ARG_NAME}=${RESOLVED_VERSION}" || true
-            [[ -n "$EXTRA_BUILD_ARGS" ]] && printf '%s\n' "$EXTRA_BUILD_ARGS" || true
+            if [[ -n "$VERSION_ARG_NAME" ]]; then
+              echo "${VERSION_ARG_NAME}=${RESOLVED_VERSION}"
+            fi
+            if [[ -n "$EXTRA_BUILD_ARGS" ]]; then
+              printf '%s\n' "$EXTRA_BUILD_ARGS"
+            fi
             echo "BUILD_ARGS_EOF"
           } >> "$GITHUB_OUTPUT"
 

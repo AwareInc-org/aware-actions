@@ -1,0 +1,67 @@
+name: Kube Lint (reusable)
+
+# Checks Kubernetes best practices with kube-linter: missing resource
+# requests/limits, containers running as root, missing/mismatched probes,
+# `:latest` image tags, and similar. Complements helm-lint.reusable.yml,
+# which only confirms a chart renders -- it doesn't check what's inside the
+# rendered manifests. Accepts either a directory of raw Kubernetes YAML or a
+# Helm chart directory directly (kube-linter renders it internally with its
+# own values.yaml); a path containing multiple charts or manifest trees is
+# walked recursively in one pass. Runs no build/render/apply against a real
+# cluster. Callers own their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      path:
+        description: 'Directory to lint: raw Kubernetes YAML, a Helm chart, or a tree containing several of either'
+        required: false
+        type: string
+        default: '.'
+      kube_linter_version:
+        description: 'Version of kube-linter to install, e.g. v0.8.3, or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      exclude_checks:
+        description: 'Newline-separated kube-linter check names to exclude, e.g. "unset-cpu-requirements"'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Resolve kube-linter version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ inputs.kube_linter_version }}" == "latest" ]]; then
+            tag=$(gh api repos/stackrox/kube-linter/releases/latest --jq '.tag_name')
+          else
+            tag="${{ inputs.kube_linter_version }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install kube-linter
+        run: |
+          curl -fsSL -o /usr/local/bin/kube-linter \
+            "https://github.com/stackrox/kube-linter/releases/download/${{ steps.version.outputs.tag }}/kube-linter-linux"
+          chmod +x /usr/local/bin/kube-linter
+          kube-linter version
+
+      - name: Lint
+        run: |
+          args=(--fail-if-no-objects-found)
+
+          mapfile -t exclude_checks < <(printf '%s\n' "${{ inputs.exclude_checks }}" | grep -v '^[[:space:]]*$')
+          for check in "${exclude_checks[@]}"; do
+            args+=(--exclude "$check")
+          done
+
+          kube-linter lint "${args[@]}" "${{ inputs.path }}"

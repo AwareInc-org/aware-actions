@@ -3,7 +3,7 @@ name: Shell Lint (reusable)
 # Lints shell scripts: shellcheck, a macOS bash-3.2 compatibility syntax check,
 # PSScriptAnalyzer for PowerShell, and an optional Windows batch-file check
 # (set check_batch_files for repos that ship .bat/.cmd files). Callers own their
-# own `on: push/pull_request: paths: [...]` trigger — see docs/design.md.
+# own `on: push/pull_request: paths: [...]` trigger.
 
 on:
   workflow_call:
@@ -27,12 +27,12 @@ jobs:
       - name: Run shellcheck
         run: |
           # Collect scripts by extension and extensionless files with shell shebangs.
-          # shellcheck reads each file's shebang to select the right rules automatically.
+          # Each file's shebang tells shellcheck which rules to apply automatically.
           mapfile -t scripts < <(
             find . -not -path './.git/*' \
               \( -name '*.sh' -o -name '*.bash' -o -name '*.zsh' -o -name '*.ksh' \)
             find . -not -path './.git/*' -type f ! -name '*.*' \
-              -exec grep -lE '^#!/(usr/bin/env )?(bash|sh|zsh|ksh|dash)' {} \; 2>/dev/null || true
+              -exec grep -lE '^#!.*[/ ](bash|sh|zsh|ksh|dash)([[:space:]]|$)' {} \; 2>/dev/null || true
           )
           if [[ ${#scripts[@]} -eq 0 ]]; then
             echo "No shell scripts found"
@@ -53,9 +53,9 @@ jobs:
         run: |
           # Only bash scripts are relevant for the macOS 3.2 compatibility check.
           find . -not -path './.git/*' \
-            \( -name '*.sh' -o -name '*.bash' -o \( -type f ! -name '*.*' \) \) | \
-            xargs grep -lE '^#!/(usr/bin/env )?bash' | \
-            xargs -I{} /bin/bash -n {}
+            \( -name '*.sh' -o -name '*.bash' -o \( -type f ! -name '*.*' \) \) -print0 | \
+            xargs -0 grep -lE --null '^#!.*[/ ]bash([[:space:]]|$)' | \
+            xargs -0 -I{} /bin/bash -n {}
 
   powershell-check:
     name: PowerShell check
