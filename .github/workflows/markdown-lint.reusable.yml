@@ -1,0 +1,54 @@
+name: Markdown Lint (reusable)
+
+# Lints Markdown files with markdownlint-cli: multiple H1s, trailing heading
+# punctuation, hard tabs, and similar. Defaults to a relaxed config rather
+# than markdownlint's own default ruleset: MD013 (line-length) is constant
+# noise on prose-heavy READMEs, and MD031/MD032 (blank lines required around
+# fenced code blocks/lists) fire on the common "Label:\n```" and
+# "Label:\n- item" doc style used throughout this repo's own docs. Pass
+# config_path for full control instead. Callers own their own
+# `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory to search recursively for Markdown files'
+        required: false
+        type: string
+        default: '.'
+      markdownlint_version:
+        description: 'Version of markdownlint-cli to install, e.g. "0.42.0", or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      config_path:
+        description: 'Path to a markdownlint config file. Leave empty for the default (relaxed) ruleset'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install markdownlint-cli
+        run: |
+          if [[ "${{ inputs.markdownlint_version }}" == "latest" ]]; then
+            npm install --global markdownlint-cli
+          else
+            npm install --global "markdownlint-cli@${{ inputs.markdownlint_version }}"
+          fi
+          markdownlint --version
+
+      - name: Lint
+        run: |
+          config_path="${{ inputs.config_path }}"
+          if [[ -z "$config_path" ]]; then
+            config_path=/tmp/markdownlint-default.json
+            printf '%s' '{"default": true, "MD013": false, "MD031": false, "MD032": false}' > "$config_path"
+          fi
+          markdownlint -c "$config_path" "${{ inputs.working_directory }}"

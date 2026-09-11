@@ -1,0 +1,80 @@
+name: Gitleaks (reusable)
+
+# Scans for committed secrets (API keys, tokens, credentials) with gitleaks.
+# Scans the full git history by default -- a secret introduced in an old
+# commit and later removed is still a leak -- set scan_git_history to false
+# to scan only the current working tree instead. Callers own their own
+# `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      scan_git_history:
+        description: 'Scan the full git history, not just the current working tree'
+        required: false
+        type: boolean
+        default: true
+      gitleaks_version:
+        description: 'Version of gitleaks to install, e.g. v8.30.1, or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      config_path:
+        description: 'Path to a gitleaks config file (.gitleaks.toml). Leave empty for gitleaks'' own default rules/discovery'
+        required: false
+        type: string
+        default: ''
+      baseline_path:
+        description: 'Path to a baseline report (from a prior gitleaks --report-path run) whose findings should be suppressed'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve gitleaks version
+        id: version
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "${{ inputs.gitleaks_version }}" == "latest" ]]; then
+            tag=$(gh api repos/gitleaks/gitleaks/releases/latest --jq '.tag_name')
+          else
+            tag="${{ inputs.gitleaks_version }}"
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Install gitleaks
+        run: |
+          version="${{ steps.version.outputs.tag }}"
+          version="${version#v}"
+          curl -fsSL -o /tmp/gitleaks.tar.gz \
+            "https://github.com/gitleaks/gitleaks/releases/download/${{ steps.version.outputs.tag }}/gitleaks_${version}_linux_x64.tar.gz"
+          tar -xzf /tmp/gitleaks.tar.gz -C /usr/local/bin gitleaks
+          chmod +x /usr/local/bin/gitleaks
+          gitleaks version
+
+      - name: Scan for secrets
+        run: |
+          args=(detect --source . --report-format json --report-path /tmp/gitleaks-report.json --exit-code 1 -v)
+
+          if [[ "${{ inputs.scan_git_history }}" != "true" ]]; then
+            args+=(--no-git)
+          fi
+
+          if [[ -n "${{ inputs.config_path }}" ]]; then
+            args+=(--config "${{ inputs.config_path }}")
+          fi
+
+          if [[ -n "${{ inputs.baseline_path }}" ]]; then
+            args+=(--baseline-path "${{ inputs.baseline_path }}")
+          fi
+
+          gitleaks "${args[@]}"

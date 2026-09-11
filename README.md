@@ -19,6 +19,11 @@ Reusable GitHub Actions for CI/CD workflows.
 - [Terragrunt Lint](docs/workflows/terragrunt-lint.md) — Checks Terragrunt HCL formatting
 - [Terragrunt Render](docs/workflows/terragrunt-render.md) — Confirms Terragrunt units render and flags dependency blocks missing mock_outputs
 - [Helm Lint](docs/workflows/helm-lint.md) — Lints Helm charts and confirms they render with their own defaults, optionally validating output against the Kubernetes API schema
+- [Kube Lint](docs/workflows/kube-lint.md) — Checks Kubernetes best practices (resource limits, non-root, probes) with kube-linter
+- [Trivy Config](docs/workflows/trivy-config.md) — Scans Terraform/OpenTofu for security misconfigurations
+- [Gitleaks](docs/workflows/gitleaks.md) — Scans for committed secrets
+- [YAML Lint](docs/workflows/yaml-lint.md) — Lints YAML files with yamllint
+- [Markdown Lint](docs/workflows/markdown-lint.md) — Lints Markdown files with markdownlint-cli
 
 ## Setup
 

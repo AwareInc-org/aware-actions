@@ -1,0 +1,69 @@
+name: YAML Lint (reusable)
+
+# Lints YAML files with yamllint: trailing whitespace, bad indentation,
+# duplicate keys, and similar. Defaults to a relaxed config rather than
+# yamllint's own default ruleset, which is noisy on real GitHub Actions
+# workflow YAML: it warns on every file missing a leading `---`, on the
+# `on:` key (read as a YAML 1.1 boolean), and on trailing `# comments` with
+# only one space before them; an 80-column line-length limit also flags most
+# `description:` and pinned-`uses:` lines. This workflow's own default
+# disables document-start, truthy, and line-length, and relaxes comment
+# spacing to 1. Pass config_path for full control instead. Callers own their
+# own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      working_directory:
+        description: 'Directory to search recursively for YAML files'
+        required: false
+        type: string
+        default: '.'
+      yamllint_version:
+        description: 'Version of yamllint to install, e.g. "1.35.1", or "latest"'
+        required: false
+        type: string
+        default: 'latest'
+      config_path:
+        description: 'Path to a yamllint config file. Leave empty for the default (relaxed) ruleset'
+        required: false
+        type: string
+        default: ''
+
+jobs:
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set up Python
+        uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.x'
+
+      - name: Install yamllint
+        run: |
+          if [[ "${{ inputs.yamllint_version }}" == "latest" ]]; then
+            pip install --quiet yamllint
+          else
+            pip install --quiet "yamllint==${{ inputs.yamllint_version }}"
+          fi
+          yamllint --version
+
+      - name: Lint
+        run: |
+          config_path="${{ inputs.config_path }}"
+          if [[ -z "$config_path" ]]; then
+            config_path=/tmp/yamllint-default.yaml
+            printf '%s\n' \
+              'extends: default' \
+              'rules:' \
+              '  document-start: disable' \
+              '  truthy: disable' \
+              '  line-length: disable' \
+              '  comments:' \
+              '    min-spaces-from-content: 1' \
+              > "$config_path"
+          fi
+          yamllint -c "$config_path" "${{ inputs.working_directory }}"
