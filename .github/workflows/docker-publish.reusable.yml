@@ -114,10 +114,12 @@ jobs:
         run: |
           {
             echo "value<<BUILD_ARGS_EOF"
-            # bash -e is on by default for run: steps — a bare `[[ ]] && echo` whose
-            # condition is false exits nonzero and would abort the step, so `|| true`.
-            [[ -n "$VERSION_ARG_NAME" ]] && echo "${VERSION_ARG_NAME}=${RESOLVED_VERSION}" || true
-            [[ -n "$EXTRA_BUILD_ARGS" ]] && printf '%s\n' "$EXTRA_BUILD_ARGS" || true
+            if [[ -n "$VERSION_ARG_NAME" ]]; then
+              echo "${VERSION_ARG_NAME}=${RESOLVED_VERSION}"
+            fi
+            if [[ -n "$EXTRA_BUILD_ARGS" ]]; then
+              printf '%s\n' "$EXTRA_BUILD_ARGS"
+            fi
             echo "BUILD_ARGS_EOF"
           } >> "$GITHUB_OUTPUT"
 
