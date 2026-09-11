@@ -1,0 +1,29 @@
+name: Bats Test (reusable)
+
+# Runs a repo's bats (Bash Automated Testing System) suite -- unit tests for
+# bash functions, as opposed to shell-lint.reusable.yml's static analysis.
+# Callers own their own `on: push/pull_request` trigger.
+
+on:
+  workflow_call:
+    inputs:
+      test_path:
+        description: 'Path/glob passed to bats'
+        required: false
+        type: string
+        default: 'tests/*.bats'
+
+jobs:
+  bats:
+    name: Bats
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Install bats
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bats
+
+      - name: Run bats
+        run: bats ${{ inputs.test_path }}

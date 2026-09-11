@@ -18,7 +18,7 @@ name: Release (reusable)
 # included in the same release commit, so the installer is guaranteed correct
 # as of every release even if a config change elsewhere wasn't regenerated at
 # the time. Callers own both the workflow_dispatch and pull_request:closed
-# triggers — see docs/design.md.
+# triggers.
 
 on:
   workflow_call:

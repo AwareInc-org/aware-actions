@@ -3,7 +3,7 @@ name: Shell Lint (reusable)
 # Lints shell scripts: shellcheck, a macOS bash-3.2 compatibility syntax check,
 # PSScriptAnalyzer for PowerShell, and an optional Windows batch-file check
 # (set check_batch_files for repos that ship .bat/.cmd files). Callers own their
-# own `on: push/pull_request: paths: [...]` trigger — see docs/design.md.
+# own `on: push/pull_request: paths: [...]` trigger.
 
 on:
   workflow_call:

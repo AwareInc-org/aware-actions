@@ -11,10 +11,12 @@ Reusable GitHub Actions for CI/CD workflows.
 - [Actionlint](docs/workflows/actionlint.md) — Lints GitHub Actions workflow YAML with actionlint
 - [Check Requirements](docs/workflows/check-requirements.md) — Ensures `requirements*.txt` files are up to date with `pyproject.toml`
 - [Python Test](docs/workflows/pytest.md) — Installs a Python repo (editable) and runs its pytest suite
+- [Bats Test](docs/workflows/bats-test.md) — Runs a repo's bats suite, unit tests for bash functions
 - [Go Test](docs/workflows/go-test.md) — Runs `go test` with race detector and coverage summary
 - [OpenTofu Test](docs/workflows/tofu-test.md) — Runs OpenTofu unit tests against mocked providers
 - [Terraform Lint](docs/workflows/terraform-lint.md) — Checks Terraform/OpenTofu formatting and static analysis
 - [Terragrunt Lint](docs/workflows/terragrunt-lint.md) — Checks Terragrunt HCL formatting
+- [Terragrunt Render](docs/workflows/terragrunt-render.md) — Confirms Terragrunt units render and flags dependency blocks missing mock_outputs
 - [Helm Lint](docs/workflows/helm-lint.md) — Lints Helm charts and confirms they render with their own defaults, optionally validating output against the Kubernetes API schema
 
 ## Setup

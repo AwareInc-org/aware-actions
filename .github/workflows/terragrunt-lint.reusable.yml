@@ -1,10 +1,10 @@
 name: Terragrunt Lint (reusable)
 
 # Checks Terragrunt HCL formatting (terragrunt hcl format --check). Pure syntax
-# formatting only -- deliberately does NOT run `terragrunt hcl validate`, which
-# was found to hang indefinitely against real live/ configs,
-# apparently while resolving backend/provider state. Add validation only with
-# a hard timeout and real cloud credentials wired in, if ever.
+# formatting only -- deliberately does NOT run `terragrunt hcl validate`,
+# which hangs indefinitely against real live/ configs while resolving
+# backend/provider state. Add validation only with a hard timeout and real
+# cloud credentials wired in.
 
 on:
   workflow_call:

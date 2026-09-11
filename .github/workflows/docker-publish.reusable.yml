@@ -1,7 +1,6 @@
 name: Docker Publish (reusable)
 
-# Shared multi-arch build+push.
-# Callers still own their own `on:` trigger — see docs/design.md.
+# Shared multi-arch build+push. Callers own their own `on:` trigger.
 
 on:
   workflow_call:
