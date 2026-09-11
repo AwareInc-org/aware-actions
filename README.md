@@ -5,6 +5,7 @@ Reusable GitHub Actions for CI/CD workflows.
 ## Workflows
 
 - [Docker Publish](docs/workflows/docker-publish.md) — Multi-architecture Docker image build and push to DockerHub
+- [Docker Lint](docs/workflows/docker-lint.md) — Lints Dockerfiles with hadolint
 - [Release](docs/workflows/release.md) — Two-phase release: prepare (SemVer validation, version bump, release PR) → finalize (tag, GitHub release)
 - [Verify Installer](docs/workflows/verify-installer.md) — Ensures `install-<product>.sh` matches its `installer.config.yaml`
 - [Shell Lint](docs/workflows/shell-lint.md) — Lints shell scripts, PowerShell, bash 3.2 compatibility, and optional Windows batch files
