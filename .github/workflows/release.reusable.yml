@@ -19,6 +19,13 @@ name: Release (reusable)
 # as of every release even if a config change elsewhere wasn't regenerated at
 # the time. Callers own both the workflow_dispatch and pull_request:closed
 # triggers.
+#
+# A version with a SemVer prerelease suffix (e.g. 1.5.0-rc1) is published as a
+# GitHub prerelease automatically — see the "Create GitHub Release" step in
+# `finalize`. This lets callers cut as many RCs as they want off of trunk
+# without those RCs ever becoming the repo's "Latest release" or (via
+# `!github.event.release.prerelease`) touching a caller's `:latest` Docker
+# tag — nothing needs to be deleted or cleaned up once an RC is superseded.
 
 on:
   workflow_call:
@@ -182,7 +189,11 @@ jobs:
           VERSION: ${{ steps.version.outputs.value }}
           MERGE_SHA: ${{ github.event.pull_request.merge_commit_sha }}
         run: |
-          gh release create "$VERSION" \
-            --target "$MERGE_SHA" \
-            --title "v$VERSION" \
-            --generate-notes
+          # A SemVer prerelease suffix (anything after a "-") marks this as a
+          # GitHub prerelease -- keeps it off "Latest release" and lets
+          # callers' docker-publish skip :latest for it (see docker-publish.md).
+          args=(--target "$MERGE_SHA" --title "v$VERSION" --generate-notes)
+          if [[ "$VERSION" == *-* ]]; then
+            args+=(--prerelease)
+          fi
+          gh release create "$VERSION" "${args[@]}"
